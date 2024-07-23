@@ -8,15 +8,39 @@ from pymongo import MongoClient
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-API_ID = '22710783'
-API_HASH = '616ea341acfed51f916506c20b8a0a44'
-BOT_TOKEN = '7212369479:AAHD0FfwXkzWcax_hjbMJ1xA4VLaI9mKjtg'
-MONGO_URI = "mongodb+srv://test:test@cluster0.q9llhnj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"  
+API_ID = ''
+API_HASH = ''
+BOT_TOKEN = ''
+MONGO_URI = ""  
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client['telegram_bot']
 channels_collection = db['channels']
 app = Client("custom_caption_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 user_states = {}
+
+@app.on_message(filters.command("start"))
+async def start(client, message):
+    await message.reply_text("Forward a message from the channel you want to add.")
+
+@app.on_message(filters.forwarded & filters.private)
+async def add_channel(client, message):
+    user_id = message.from_user.id
+    channel_id = message.forward_from_chat.id
+    
+    try:
+        chat = await client.get_chat(channel_id)
+        channel_name = chat.title
+    except Exception as e:
+        await message.reply_text(f"Failed to add channel: {str(e)}")
+        return
+
+    channels_collection.update_one(
+        {'channel_id': channel_id, 'user_id': user_id},
+        {'$set': {'channel_name': channel_name, 'caption': '', 'button_text': '', 'button_url': ''}},
+        upsert=True
+    )
+
+    await message.reply_text(f"Channel {channel_name} ({channel_id}) added. Use `/set_caption {channel_id}` to set a caption and `/set_button {channel_id}` to set a button.")
 
 @app.on_message(filters.command("channels"))
 async def list_channels(client, message):
@@ -31,35 +55,8 @@ async def list_channels(client, message):
     if buttons:
         await message.reply_text("Your channels:", reply_markup=InlineKeyboardMarkup(buttons))
     else:
-        await message.reply_text("You have no channels added. Use /add <channel_id> to add a channel.")
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    await message.reply_text("Use /add <channel_id> to add a channel.")
-    
-@app.on_message(filters.command("add"))
-async def add_channel(client, message):
-    if len(message.command) < 2:
-        await message.reply_text("Usage: /add <channel_id>")
-        return
+        await message.reply_text("You have no channels added. Forward a message from the channel you want to add.")
 
-    channel_id = message.command[1]
-    user_id = message.from_user.id
-    
-    # Fetch channel information
-    try:
-        chat = await client.get_chat(channel_id)
-        channel_name = chat.title
-    except Exception as e:
-        await message.reply_text(f"Failed to add channel: {str(e)}")
-        return
-
-    channels_collection.update_one(
-        {'channel_id': channel_id, 'user_id': user_id},
-        {'$set': {'channel_name': channel_name, 'caption': '', 'button_text': '', 'button_url': ''}},
-        upsert=True
-    )
-
-    await message.reply_text(f"Channel {channel_name} ({channel_id}) added. Use /set_caption {channel_id} to set a caption and /set_button {channel_id} to set a button.")
 @app.on_message(filters.command("set_caption"))
 async def set_caption(client, message):
     if len(message.command) < 2:
@@ -110,7 +107,6 @@ async def handle_private_message(client, message):
             except ValueError:
                 await message.reply_text("Invalid format. Please send the custom button text and URL in the format: ButtonText,URL")
             del user_states[user_id]
-
 
 @app.on_callback_query(filters.regex(r"channel_(.*)"))
 async def channel_details(client, callback_query):
