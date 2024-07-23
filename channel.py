@@ -2,7 +2,7 @@ import pyrogram
 import re
 import logging
 from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pymongo import MongoClient
 
 logging.basicConfig(level=logging.INFO)
@@ -17,10 +17,23 @@ db = mongo_client['telegram_bot']
 channels_collection = db['channels']
 app = Client("custom_caption_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 user_states = {}
-
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    await message.reply_text("Forward a message from the channel you want to add.")
+@app.on_message(filters.command("start") & filters.private)
+async def handle_start_command(client, message):
+    user_id = message.from_user.id
+    if not users_collection.find_one({"user_id": user_id}):
+        users_collection.insert_one({"user_id": user_id})
+    
+    user_count = users_collection.count_documents({})
+    
+    instructions = (
+        "<b>Hey, \nI'm an auto-caption bot. I automatically edit captions for videos, audio files, and documents posted on channels.\n\nUse <code>/set_caption /edit_caption /set_button /remove_channel /channels </code> to set caption\nUse <code>/delcaption</code> to delete caption and set caption to default.\n\nNote: All commands work on pm only</b>"
+    )
+    buttons = [
+        [
+            InlineKeyboardButton("update channel", url="https://t.me/Pro_BOT4U"),
+        ]
+    ]
+    await message.reply_text(instructions, reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_message(filters.forwarded & filters.private)
 async def add_channel(client, message):
@@ -124,6 +137,25 @@ async def channel_details(client, callback_query):
             ])
         )
 
+@app.on_message(filters.channel)
+async def handle_channel_message(client, message):
+    channel_id = str(message.chat.id)
+    channel_data = channels_collection.find_one({'channel_id': channel_id})
+
+    if channel_data:
+        caption = channel_data.get('caption', '')
+        button_text = channel_data.get('button_text', '')
+        button_url = channel_data.get('button_url', '')
+
+        if caption and button_text and button_url:
+            reply_markup = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(button_text, url=button_url)]]
+            )
+
+            if message.media:
+                await message.edit_caption(caption=caption, reply_markup=reply_markup)
+            
+
 @app.on_callback_query(filters.regex(r"edit_caption_(.*)"))
 async def edit_caption(client, callback_query):
     channel_id = callback_query.data.split('_')[2]
@@ -145,24 +177,7 @@ async def remove_channel(client, callback_query):
     channels_collection.delete_one({'channel_id': channel_id, 'user_id': user_id})
     await callback_query.message.reply_text("Channel removed successfully!")
 
-@app.on_message(filters.channel)
-async def handle_channel_message(client, message):
-    channel_id = str(message.chat.id)
-    channel_data = channels_collection.find_one({'channel_id': channel_id})
 
-    if channel_data:
-        caption = channel_data.get('caption', '')
-        button_text = channel_data.get('button_text', '')
-        button_url = channel_data.get('button_url', '')
-
-        if caption and button_text and button_url:
-            reply_markup = InlineKeyboardMarkup(
-                [[InlineKeyboardButton(button_text, url=button_url)]]
-            )
-
-            if message.media:
-                await message.edit_caption(caption=caption, reply_markup=reply_markup)
-            
             # else:
             #     await message.edit_text(text=caption, reply_markup=reply_markup)
 
