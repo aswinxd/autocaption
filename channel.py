@@ -19,12 +19,7 @@ app = Client("custom_caption_bot", api_id=API_ID, api_hash=API_HASH, bot_token=B
 user_states = {}
 @app.on_message(filters.command("start") & filters.private)
 async def handle_start_command(client, message):
-    user_id = message.from_user.id
-    if not users_collection.find_one({"user_id": user_id}):
-        users_collection.insert_one({"user_id": user_id})
-    
-    user_count = users_collection.count_documents({})
-    
+    user_id = message.from_user.id    
     instructions = (
         "<b>Hey, \nI'm an auto-caption bot. I automatically edit captions for videos, audio files, and documents posted on channels.\n\nUse <code>/set_caption /edit_caption /set_button /remove_channel /channels </code> to set caption\nUse <code>/delcaption</code> to delete caption and set caption to default.\n\nNote: All commands work on pm only</b>"
     )
